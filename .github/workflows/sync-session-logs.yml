@@ -1,0 +1,75 @@
+# Sync session_logs from Motor_Test_Bench → convert → commit public/data + manifest
+#
+# Secrets:
+#   MTB_READ_TOKEN  — PAT with contents:read on OntarioTechRacing/Motor_Test_Bench
+#
+# Triggers: repository_dispatch (from MTB), nightly cron, manual
+
+name: Sync session logs
+
+on:
+  repository_dispatch:
+    types: [session-logs-updated]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-session-logs
+  cancel-in-progress: true
+
+jobs:
+  convert-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout webapp
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sparse-checkout Motor_Test_Bench session_logs
+        uses: actions/checkout@v4
+        with:
+          repository: OntarioTechRacing/Motor_Test_Bench
+          token: ${{ secrets.MTB_READ_TOKEN }}
+          sparse-checkout: |
+            session_logs
+          sparse-checkout-cone-mode: true
+          path: _mtb
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install converter deps
+        run: pip install -r requirements.txt
+
+      - name: Convert session_logs → public/data + manifest
+        run: |
+          python convert_inverter_csv.py \
+            --input _mtb/session_logs \
+            --out-dir public/data \
+            --manifest public/manifest.json \
+            --clean-out
+
+      - name: Commit converted data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Do not ship the mega merge file if present
+          rm -f public/data/all_sessions_inverter.csv
+          git add -A public/data public/manifest.json
+          # Drop conversion summary noise from the deploy tree if staged
+          git reset HEAD -- public/data/summary.json 2>/dev/null || true
+          rm -f public/data/summary.json
+          if git diff --staged --quiet; then
+            echo "No converted-data changes"
+          else
+            git commit -m "chore: sync converted session_logs"
+            git push
+          fi

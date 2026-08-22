@@ -1,0 +1,28 @@
+# Place this file in Motor_Test_Bench at:
+#   .github/workflows/notify-session-logs.yml
+#
+# Secrets on Motor_Test_Bench:
+#   WEBAPP_DISPATCH_TOKEN — PAT with actions:write (repo dispatch) on the webapp repo
+#
+# Vars (optional):
+#   WEBAPP_REPO — default OntarioTechRacing/<your-webapp-repo>
+#     Set repository variable WEBAPP_REPO to e.g. OntarioTechRacing/motor-signal-viewer
+
+name: Notify webapp of session_logs changes
+
+on:
+  push:
+    paths:
+      - "session_logs/**"
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: repository_dispatch → webapp
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.WEBAPP_DISPATCH_TOKEN }}
+          repository: ${{ vars.WEBAPP_REPO || 'OntarioTechRacing/motor-signal-viewer' }}
+          event-type: session-logs-updated
