@@ -15,7 +15,8 @@ Dropdown labels look like `FolderName / 2026-08-04_16-47-17`.
 
 - Motor_Test_Bench stores logs as **`session_logs/<folder>/*.csv.gz`** (gzip-compressed CSV).
 - The converter decompresses `.csv.gz` automatically.
-- A log only appears in the viewer if it contains **`M172_Torque_And_Timer_Info`** rows with `INV_*` signal columns (typical inverter telemetry). Logs that only have other messages (e.g. `M192_Command_Message`) are skipped.
+- Any row with **at least one non-empty signal cell** is kept (e.g. `INV_*` from M172 or `VCU_INV_*` from M192). Completely blank signal rows are dropped.
+- When M172 timer messages exist they set the sample cadence; otherwise every row that carried signal data is emitted.
 - If a sync finds no convertible logs, **existing `public/data` is left unchanged** (the workflow will not wipe the site).
 
 ## One-time setup

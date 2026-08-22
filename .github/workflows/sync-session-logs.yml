@@ -62,7 +62,7 @@ jobs:
         run: |
           COUNT=$(python -c "import json; print(len(json.load(open('_converted/manifest.json'))['files']))")
           if [ "$COUNT" = "0" ]; then
-            echo "No convertible session_logs found (.csv/.csv.gz with M172 inverter data); keeping existing public/data"
+            echo "No convertible session_logs found (.csv/.csv.gz with any signal cells); keeping existing public/data"
             exit 0
           fi
           rm -rf public/data

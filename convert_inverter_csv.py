@@ -2,22 +2,13 @@
 """Convert raw CAN-decoded CSVs into time-aligned inverter CSVs + static manifest.
 
 Raw logs are sparse (one CAN message per row). This script:
-  1. Keeps the INV_* signals used by the converted schema
+  1. Keeps every signal column that has at least one non-empty cell (INV_*, VCU_INV_*, …)
   2. Forward-fills them in time order
-  3. Emits one row per M172_Torque_And_Timer_Info message
+  3. Emits one row per M172_Torque_And_Timer_Info when present; otherwise keeps
+     every row that originally had at least one signal value
   4. Adds `time` + `time_s` (seconds from the first emitted sample)
   5. Preserves subfolders under the input root in the output tree
   6. Writes public/manifest.json for the Vercel static viewer
-
-Layout (this webapp folder):
-  logs/              raw CAN CSVs (local default input; may be nested)
-  public/data/       converted inverter CSVs (deployed)
-  public/manifest.json
-
-Examples (from webapp/):
-  ../.venv/bin/python convert_inverter_csv.py
-  ../.venv/bin/python convert_inverter_csv.py --input /path/to/session_logs
-  ../.venv/bin/python convert_inverter_csv.py --merge
 """
 
 from __future__ import annotations
@@ -28,7 +19,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
@@ -122,10 +112,40 @@ SIGNAL_COLS = [
 EMIT_MESSAGE = "M172_Torque_And_Timer_Info"
 TIMESTAMP_COL = "timestamp"
 MESSAGE_COL = "message_name"
+META_COLS = frozenset({TIMESTAMP_COL, MESSAGE_COL, "arbitration_id"})
+
+
+def discover_signal_cols(raw: pd.DataFrame) -> list[str]:
+    """Columns with at least one non-null value, excluding timestamp / message metadata.
+
+    Prefer the known INV_* schema order, then any other populated signal columns
+    (e.g. VCU_INV_* from M192 command messages).
+    """
+    candidates = [c for c in raw.columns if c not in META_COLS]
+    populated: list[str] = []
+    for c in candidates:
+        series = raw[c]
+        if series.isna().all():
+            continue
+        # Keep columns that have any non-empty / non-null cell
+        if series.dtype == object:
+            nonempty = series.astype(str).str.strip().ne("") & series.notna()
+            if not nonempty.any():
+                continue
+        populated.append(c)
+
+    preferred = [c for c in SIGNAL_COLS if c in populated]
+    extras = sorted(c for c in populated if c not in SIGNAL_COLS)
+    return preferred + extras
 
 
 def convert_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Convert a raw decoded CAN CSV dataframe to inverter time-series format."""
+    """Convert a raw decoded CAN CSV dataframe to inverter time-series format.
+
+    A row is kept if it has any signal cell with data. When M172 timer messages
+    exist they are preferred as the emit cadence; otherwise every row that
+    originally carried at least one signal value is retained (e.g. M192-only logs).
+    """
     meta: dict = {
         "input_rows": int(len(raw)),
         "output_rows": 0,
@@ -133,12 +153,14 @@ def convert_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         "missing_cols": [],
     }
 
+    empty_out = pd.DataFrame(columns=["time", "time_s"])
     if raw.empty or TIMESTAMP_COL not in raw.columns:
-        return pd.DataFrame(columns=["time", "time_s", *SIGNAL_COLS]), meta
+        return empty_out, meta
 
-    present = [c for c in SIGNAL_COLS if c in raw.columns]
-    missing = [c for c in SIGNAL_COLS if c not in raw.columns]
-    meta["missing_cols"] = missing
+    present = discover_signal_cols(raw)
+    meta["missing_cols"] = [c for c in SIGNAL_COLS if c not in present]
+    if not present:
+        return empty_out, meta
 
     cols = [TIMESTAMP_COL]
     if MESSAGE_COL in raw.columns:
@@ -149,28 +171,36 @@ def convert_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     for c in present:
         sub[c] = pd.to_numeric(sub[c], errors="coerce")
 
+    # Row has data if any signal cell is non-null before forward-fill
+    row_has_data = sub[present].notna().any(axis=1)
+
     if present:
         sub[present] = sub[present].ffill()
 
-    if MESSAGE_COL in sub.columns:
+    if MESSAGE_COL in sub.columns and (sub[MESSAGE_COL] == EMIT_MESSAGE).any():
         out = sub[sub[MESSAGE_COL] == EMIT_MESSAGE].copy()
     else:
-        out = sub.drop_duplicates(TIMESTAMP_COL, keep="last").copy()
+        # Keep every row that had at least one populated signal cell
+        out = sub[row_has_data].copy()
+        if out.empty:
+            out = sub.drop_duplicates(TIMESTAMP_COL, keep="last").copy()
+
+    # Drop rows that are still entirely empty after selection
+    if present:
+        out = out[out[present].notna().any(axis=1)].copy()
 
     if out.empty:
-        return pd.DataFrame(columns=["time", "time_s", *SIGNAL_COLS]), meta
+        return empty_out, meta
 
     out = out.rename(columns={TIMESTAMP_COL: "time"})
-    for c in missing:
-        out[c] = np.nan
-
     times = pd.to_datetime(out["time"], utc=True, errors="coerce")
     t0 = times.iloc[0]
     out["time_s"] = (times - t0).dt.total_seconds()
-    out = out.loc[:, ["time", "time_s", *SIGNAL_COLS]].reset_index(drop=True)
+    out = out.loc[:, ["time", "time_s", *present]].reset_index(drop=True)
 
     meta["empty"] = False
     meta["output_rows"] = int(len(out))
+    meta["signal_cols"] = present
     meta["t0"] = str(out["time"].iloc[0])
     meta["t1"] = str(out["time"].iloc[-1])
     meta["duration_s"] = float(out["time_s"].iloc[-1]) if len(out) else 0.0
