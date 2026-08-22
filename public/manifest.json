@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-22T23:31:25.437895+00:00",
+  "generated_at": "2026-08-22T23:37:16.540276+00:00",
   "files": [
     {
       "id": "kaukaulaptop/2026-08-22_18-21-27",
@@ -100,6 +100,11 @@
       "id": "OTR-Telemetry/2026-08-20_21-28-54",
       "label": "OTR-Telemetry / 2026-08-20_21-28-54",
       "path": "/data/OTR-Telemetry/2026-08-20_21-28-54_inverter.csv"
+    },
+    {
+      "id": "OTR-Telemetry/2026-08-22_19-35-14",
+      "label": "OTR-Telemetry / 2026-08-22_19-35-14",
+      "path": "/data/OTR-Telemetry/2026-08-22_19-35-14_inverter.csv"
     }
   ]
 }
