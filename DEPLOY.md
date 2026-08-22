@@ -11,6 +11,13 @@ Triggers: push to `session_logs` (via dispatch from MTB) · nightly 06:00 UTC ·
 
 Dropdown labels look like `FolderName / 2026-08-04_16-47-17`.
 
+## Session log format
+
+- Motor_Test_Bench stores logs as **`session_logs/<folder>/*.csv.gz`** (gzip-compressed CSV).
+- The converter decompresses `.csv.gz` automatically.
+- A log only appears in the viewer if it contains **`M172_Torque_And_Timer_Info`** rows with `INV_*` signal columns (typical inverter telemetry). Logs that only have other messages (e.g. `M192_Command_Message`) are skipped.
+- If a sync finds no convertible logs, **existing `public/data` is left unchanged** (the workflow will not wipe the site).
+
 ## One-time setup
 
 ### 1. Put this webapp in its own GitHub repo
@@ -32,7 +39,7 @@ Copy [`deploy/motor-test-bench-notify-session-logs.yml`](deploy/motor-test-bench
 | Name | Where | Purpose |
 |------|--------|---------|
 | `WEBAPP_DISPATCH_TOKEN` | Secret | PAT with permission to send `repository_dispatch` to the webapp repo |
-| `WEBAPP_REPO` | Variable | e.g. `OntarioTechRacing/your-webapp-repo` |
+| `WEBAPP_REPO` | Variable | `OntarioTechRacing/Motor_Test_Bench_Diagnostics` |
 
 ### 4. Vercel
 

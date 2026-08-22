@@ -49,24 +49,32 @@ jobs:
       - name: Install converter deps
         run: pip install -r requirements.txt
 
-      - name: Convert session_logs → public/data + manifest
+      - name: Convert session_logs → staging
         run: |
+          mkdir -p _converted
           python convert_inverter_csv.py \
             --input _mtb/session_logs \
-            --out-dir public/data \
-            --manifest public/manifest.json \
+            --out-dir _converted/data \
+            --manifest _converted/manifest.json \
             --clean-out
+
+      - name: Promote converted data (skip if nothing converted)
+        run: |
+          COUNT=$(python -c "import json; print(len(json.load(open('_converted/manifest.json'))['files']))")
+          if [ "$COUNT" = "0" ]; then
+            echo "No convertible session_logs found (.csv/.csv.gz with M172 inverter data); keeping existing public/data"
+            exit 0
+          fi
+          rm -rf public/data
+          mv _converted/data public/data
+          mv _converted/manifest.json public/manifest.json
+          rm -f public/data/all_sessions_inverter.csv public/data/summary.json
 
       - name: Commit converted data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Do not ship the mega merge file if present
-          rm -f public/data/all_sessions_inverter.csv
           git add -A public/data public/manifest.json
-          # Drop conversion summary noise from the deploy tree if staged
-          git reset HEAD -- public/data/summary.json 2>/dev/null || true
-          rm -f public/data/summary.json
           if git diff --staged --quiet; then
             echo "No converted-data changes"
           else

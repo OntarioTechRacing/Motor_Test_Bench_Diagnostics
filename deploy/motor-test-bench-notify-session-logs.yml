@@ -24,5 +24,5 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.WEBAPP_DISPATCH_TOKEN }}
-          repository: ${{ vars.WEBAPP_REPO || 'OntarioTechRacing/motor-signal-viewer' }}
+          repository: ${{ vars.WEBAPP_REPO || 'OntarioTechRacing/Motor_Test_Bench_Diagnostics' }}
           event-type: session-logs-updated

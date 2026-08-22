@@ -177,15 +177,33 @@ def convert_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return out, meta
 
 
+def input_stem(path: Path) -> str:
+    """Base name without .csv or .csv.gz."""
+    name = path.name
+    if name.endswith(".csv.gz"):
+        return name[: -len(".csv.gz")]
+    if name.endswith(".csv"):
+        return path.stem
+    return path.stem
+
+
+def read_raw_csv(path: Path) -> pd.DataFrame:
+    if path.name.endswith(".gz"):
+        return pd.read_csv(path, compression="gzip", low_memory=False)
+    return pd.read_csv(path, low_memory=False)
+
+
 def list_raw_csvs(root: Path) -> list[Path]:
-    """Recursively list raw CSVs under root (skip *_inverter.csv)."""
+    """Recursively list raw CSV / CSV.GZ under root (skip *_inverter.csv)."""
     if not root.is_dir():
         return []
-    return sorted(
-        p
-        for p in root.rglob("*.csv")
-        if p.is_file() and not p.name.endswith("_inverter.csv")
-    )
+    out: list[Path] = []
+    for p in root.rglob("*"):
+        if not p.is_file() or p.name.endswith("_inverter.csv"):
+            continue
+        if p.suffix == ".csv" or p.name.endswith(".csv.gz"):
+            out.append(p)
+    return sorted(out)
 
 
 def relative_folder(path: Path, input_root: Path) -> str:
@@ -214,7 +232,7 @@ def convert_file(path: Path, out_dir: Path, *, rel_folder: str = "") -> dict:
     """Convert one raw CSV into out_dir[/rel_folder]/<stem>_inverter.csv."""
     summary: dict = {"file": path.name, "rel_folder": rel_folder}
     try:
-        raw = pd.read_csv(path, low_memory=False)
+        raw = read_raw_csv(path)
     except Exception as exc:  # noqa: BLE001
         summary.update({"empty": True, "error": str(exc), "input_rows": 0, "output_rows": 0})
         return summary
@@ -229,14 +247,14 @@ def convert_file(path: Path, out_dir: Path, *, rel_folder: str = "") -> dict:
     if meta.get("empty") or out.empty:
         return summary
 
-    out_name = f"{path.stem}_inverter.csv"
+    out_name = f"{input_stem(path)}_inverter.csv"
     dest_dir = out_dir / rel_folder if rel_folder else out_dir
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = dest_dir / out_name
     out.to_csv(out_path, index=False)
     summary["output"] = out_name
     summary["output_relpath"] = f"{rel_folder}/{out_name}" if rel_folder else out_name
-    summary["manifest"] = manifest_entry(rel_folder, path.stem, out_name)
+    summary["manifest"] = manifest_entry(rel_folder, input_stem(path), out_name)
 
     def _mm(col: str) -> tuple[float | None, float | None]:
         if col not in out or out[col].isna().all():
