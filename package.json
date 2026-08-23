@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "convert": "python convert_inverter_csv.py",
-    "convert:clean": "python convert_inverter_csv.py --clean-out"
+    "convert:clean": "python convert_inverter_csv.py --clean-out",
+    "favicon": "node scripts/make-favicon.mjs"
   },
   "dependencies": {
     "papaparse": "^5.6.0",
@@ -23,6 +24,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "sharp": "^0.34.5",
     "vite": "^8.2.0"
   }
 }
